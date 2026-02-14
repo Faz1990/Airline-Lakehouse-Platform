@@ -16,7 +16,7 @@ from azure.eventhub import EventHubProducerClient, EventData
 # ── Config (no secrets) ──────────────────────────────────────────────
 FULLY_QUALIFIED_NAMESPACE = "ehns-airline-dlt-dev-uks.servicebus.windows.net"
 EVENTHUB_NAME = "airline-events"
-CSV_PATH = r"C:\Users\Faisal\Projects\Creating Delta Live Tables in Databricks\Project Data\Data\Data\ONTIME_REPORTING_022.csv"
+CSV_PATH = r"C:\Users\Faisal\Projects\Creating Delta Live Tables in Databricks\Project Data\Data\Data\ONTIME_REPORTING_03.csv"
 
 
 def read_csv_as_dicts(path: str):
