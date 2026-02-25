@@ -1,0 +1,3 @@
+SELECT *
+FROM airline_dev.bronze.events_raw
+LIMIT 5;
