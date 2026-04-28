@@ -45,3 +45,34 @@ ORDER BY flight_count DESC
 LIMIT 10;
 
 -- Top result: LAX-JFK | 181 flights
+
+-- ============================================================
+-- Query 3: Day-of-week delay pattern
+-- ============================================================
+-- Business question: Which day of the week has the worst average 
+--   departure delay? Show all 7 days ranked from worst to best.
+-- Tables: airline_dev.gold.fact_flights
+-- Note: BTS convention (1=Monday, 7=Sunday). Excludes cancelled
+--   flights from the average to avoid skew from null delay values.
+-- Finding: Tuesday is worst (18.06 min), Monday is best (9.79 min).
+--   Counterintuitive — common wisdom says Monday is worst for
+--   business travel, but this dataset shows the opposite.
+-- ============================================================
+SELECT 
+    day_of_week,
+    CASE day_of_week
+        WHEN 1 THEN 'Monday'
+        WHEN 2 THEN 'Tuesday'
+        WHEN 3 THEN 'Wednesday'
+        WHEN 4 THEN 'Thursday'
+        WHEN 5 THEN 'Friday'
+        WHEN 6 THEN 'Saturday'
+        WHEN 7 THEN 'Sunday'
+        ELSE 'Unknown'
+    END AS day_name,
+    ROUND(AVG(dep_delay_minutes), 2) AS avg_dep_delay_minutes,
+    COUNT(*) AS flight_count
+FROM airline_dev.gold.fact_flights
+WHERE cancelled = 0
+GROUP BY day_of_week
+ORDER BY avg_dep_delay_minutes DESC;
