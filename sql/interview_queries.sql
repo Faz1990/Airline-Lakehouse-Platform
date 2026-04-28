@@ -26,3 +26,22 @@ ORDER BY avg_delay_minutes DESC
 LIMIT 5;
 
 -- Result: AA | 13.18 | 1,719
+
+-- ============================================================
+-- Query 2: Top 10 routes by flight volume
+-- ============================================================
+-- Business question: Which origin-destination pairs have the 
+--   most flights? Show the top 10.
+-- Tables: airline_dev.gold.fact_flights
+-- Note: Bidirectional routes (e.g., LAX-JFK and JFK-LAX) appear
+--   separately because they are operationally distinct.
+-- ============================================================
+SELECT 
+    CONCAT(origin_code, '-', dest_code) AS route,
+    COUNT(*) AS flight_count
+FROM airline_dev.gold.fact_flights
+GROUP BY origin_code, dest_code
+ORDER BY flight_count DESC
+LIMIT 10;
+
+-- Top result: LAX-JFK | 181 flights
