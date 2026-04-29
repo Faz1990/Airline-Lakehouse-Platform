@@ -104,3 +104,50 @@ GROUP BY origin_code, dest_code
 HAVING COUNT(*) >= 20
 ORDER BY cancellation_rate_pct DESC
 LIMIT 10;
+
+-- ============================================================
+-- Query 5: Cumulative flights and rolling cancellation rate per route
+-- ============================================================
+-- Business question: For top routes, show daily flight counts plus
+--   running cumulative totals and a rolling cancellation rate.
+--   Useful for identifying whether problems concentrate early or 
+--   late in the period.
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - CTE for staged aggregation (collapse rows before windowing)
+--   - Window function with PARTITION BY (resets per route)
+--   - Running total frame: ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+--   - Named WINDOW clause (DRY: define once, reference 3x)
+--   - Combined window expressions for derived metrics 
+--     (rolling rate = SUM(cancelled)/SUM(flights))
+-- Findings:
+--   - JFK-LAX builds steadily through month, low cancellations
+--   - LAX-JFK shows higher cancellation pattern (16.57% overall, see Q4)
+--   - Data quality gap detected: at least one row has null day_of_month
+--     -> add expectation in Bronze layer (follow-up)
+-- ============================================================
+WITH daily_route_flights AS (
+    SELECT
+        CONCAT(origin_code, '-', dest_code) AS route,
+        day_of_month,
+        COUNT(*) AS daily_flights,
+        COUNT_IF(cancelled = 1) AS daily_cancelled
+    FROM airline_dev.gold.fact_flights
+    GROUP BY origin_code, dest_code, day_of_month
+)
+SELECT
+    route,
+    day_of_month,
+    daily_flights,
+    daily_cancelled,
+    SUM(daily_flights) OVER w AS cumulative_flights,
+    SUM(daily_cancelled) OVER w AS cumulative_cancelled,
+    ROUND(SUM(daily_cancelled) OVER w * 100.0 / SUM(daily_flights) OVER w, 2) AS rolling_cancellation_rate_pct
+FROM daily_route_flights
+WHERE route IN ('LAX-JFK', 'JFK-LAX', 'LGA-ORD')
+WINDOW w AS (
+    PARTITION BY route
+    ORDER BY day_of_month
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+)
+ORDER BY route, day_of_month;
