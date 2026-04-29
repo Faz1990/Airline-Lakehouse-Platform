@@ -76,3 +76,31 @@ FROM airline_dev.gold.fact_flights
 WHERE cancelled = 0
 GROUP BY day_of_week
 ORDER BY avg_dep_delay_minutes DESC;
+
+-- ============================================================
+-- Query 4: Routes with highest cancellation rate
+-- ============================================================
+-- Business question: Which routes have the worst cancellation 
+--   rates? Filter to routes with at least 20 flights to avoid
+--   noise from rare routes.
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - COUNT_IF for conditional counting (Databricks/Spark dialect)
+--   - HAVING vs WHERE: HAVING filters aggregates, WHERE filters rows
+--   - Integer division pitfall: multiply by 100.0 to force double 
+--     arithmetic and prevent silent truncation to zero
+-- Finding: LAX-JFK has the highest cancellation rate at 16.57% 
+--   (30 of 181 flights). Worth investigating — could indicate 
+--   weather (Northeast hub), congestion, or operational issues
+--   on this transcontinental route.
+-- ============================================================
+SELECT  
+    CONCAT(origin_code, '-', dest_code) AS route,
+    COUNT(*) AS total_flights,
+    COUNT_IF(cancelled = 1) AS cancelled_flights,
+    ROUND(COUNT_IF(cancelled = 1) * 100.0 / COUNT(*), 2) AS cancellation_rate_pct
+FROM airline_dev.gold.fact_flights
+GROUP BY origin_code, dest_code
+HAVING COUNT(*) >= 20
+ORDER BY cancellation_rate_pct DESC
+LIMIT 10;
