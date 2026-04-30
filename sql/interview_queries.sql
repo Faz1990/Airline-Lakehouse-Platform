@@ -151,3 +151,49 @@ WINDOW w AS (
     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 )
 ORDER BY route, day_of_month;
+
+-- ============================================================
+-- Query 6: Delay attribution breakdown
+-- ============================================================
+-- Business question: For flights delayed 15+ minutes, what's
+--   the breakdown of delay causes? Show total minutes per type
+--   and percent of total delay attributed to each.
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - LATERAL VIEW + STACK for unpivoting wide -> long format
+--   - CTE to separate unpivot logic from aggregation
+--   - Empty OVER() window function for "% of grand total" pattern
+--     (computes denominator across all groups in single pass)
+-- BTS context: Cause attribution columns are only populated for 
+--   delays >= 15 min; null/zero otherwise. Filter required.
+-- Findings: 
+--   - Carrier-controllable delays (carrier + late_aircraft) = 77.3%
+--     of attributed delay minutes. Late aircraft is upstream
+--     carrier issues cascading, so airline operations dominate.
+--   - NAS (ATC/airspace) = 18.2%. External infrastructure factor.
+--   - Weather = 4.4% — low because severe weather usually triggers
+--     cancellation, not delay. Cancelled flights are excluded
+--     from this rollup.
+--   - Security ~ 0%. Rarely a flight-delay driver at scale.
+-- ============================================================
+WITH delays_unpivoted AS (
+    SELECT delay_type, minutes
+    FROM airline_dev.gold.fact_flights
+    LATERAL VIEW stack(5,
+        'carrier',       carrier_delay_minutes,
+        'weather',       weather_delay_minutes,
+        'nas',           nas_delay_minutes,
+        'security',      security_delay_minutes,
+        'late_aircraft', late_aircraft_delay_minutes
+    ) AS delay_type, minutes
+    WHERE dep_delay_minutes >= 15
+      AND minutes IS NOT NULL
+      AND minutes > 0
+)
+SELECT 
+    delay_type,
+    SUM(minutes) AS total_delay_minutes,
+    ROUND(SUM(minutes) * 100.0 / SUM(SUM(minutes)) OVER (), 2) AS pct_of_total_delay
+FROM delays_unpivoted
+GROUP BY delay_type
+ORDER BY total_delay_minutes DESC;
