@@ -197,3 +197,52 @@ SELECT
 FROM delays_unpivoted
 GROUP BY delay_type
 ORDER BY total_delay_minutes DESC;
+
+-- ============================================================
+-- Query 7: Top 3 most delayed flights per route
+-- ============================================================
+-- Business question: For each route, identify the 3 most 
+--   delayed flights. Useful for spotting recurring problem
+--   flights vs one-off bad days.
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - DENSE_RANK() window function
+--   - "Top N per group" pattern via CTE + outer WHERE
+--   - PARTITION BY for resetting rank per group
+--   - Why aliases can't be used in window definitions
+--     (CONCAT repeated because 'route' alias not yet visible)
+-- Why not LIMIT 3?
+--   LIMIT chops the final result globally — would return top 3 
+--   flights across ALL routes combined, missing the worst delays 
+--   in smaller routes. PARTITION BY route + WHERE rank <= 3 
+--   returns top 3 within EACH group. Top-N-per-group is the 
+--   most common SQL interview pattern after JOIN.
+-- Why DENSE_RANK over RANK or ROW_NUMBER?
+--   ROW_NUMBER: arbitrary tie-breaking (could pick wrong row)
+--   RANK: leaves gaps after ties (1,2,2,4) - confusing in output
+--   DENSE_RANK: ties share rank, no gaps (1,2,2,3) - cleanest
+--     for "top N tiers" semantics where ties should appear together
+-- Findings:
+--   - 270 rows returned (~90 routes × 3 ranks each)
+--   - DENSE_RANK working: tied delays produce shared ranks
+--     e.g. BOS-DFW had two flights tied at 5 min delay (both rank 2)
+-- ============================================================
+WITH ranked AS (
+    SELECT
+        CONCAT(origin_code, '-', dest_code) AS route,
+        day_of_month,
+        flight_num,
+        dep_delay_minutes,
+        DENSE_RANK() OVER (
+            PARTITION BY CONCAT(origin_code, '-', dest_code) 
+            ORDER BY dep_delay_minutes DESC
+        ) AS delay_rank
+    FROM airline_dev.gold.fact_flights
+    WHERE cancelled = 0
+      AND dep_delay_minutes IS NOT NULL
+)
+SELECT *
+FROM ranked
+WHERE delay_rank <= 3
+ORDER BY route, delay_rank;
+
