@@ -246,3 +246,57 @@ FROM ranked
 WHERE delay_rank <= 3
 ORDER BY route, delay_rank;
 
+-- ============================================================
+-- Query 8: Day-over-day delay change per route (LAG)
+-- ============================================================
+-- Business question: For each route, show daily average delay
+--   alongside the previous day's average. Calculate day-over-day
+--   change. Which routes had the biggest single-day worsening?
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - LAG() window function (access previous row's value)
+--   - LAG vs self-join: same logic, single pass, no shuffle
+--   - QUALIFY clause: filter on window results without extra CTE
+--     (Databricks/Snowflake/BigQuery; not standard ANSI SQL)
+--   - Two-stage aggregation pattern: GROUP BY in CTE, then window
+--     functions in outer SELECT
+-- LAG semantic limitation:
+--   LAG operates on row order, NOT calendar order. If a route
+--   skips days (no flights), LAG returns the previous *row* in
+--   the partition, not the previous *day*. For true daily 
+--   comparisons in production, JOIN against a date dimension 
+--   table to fill missing days with NULL or 0.
+-- Findings:
+--   - OGG-DFW shows +1090 min change on day 5: outlier flight
+--     delayed 18 hours, plus a gap before day 5 (no flights 
+--     prior). Skews average dramatically.
+--   - MSP-ORD jumped 12 -> 467 min average — single bad day
+--     warrants operational investigation
+--   - Pattern: largest jumps come from low-volume routes where
+--     one bad flight dominates the daily mean. Consider 
+--     filtering by minimum flights per day in production.
+-- ============================================================
+WITH daily_delays AS (
+    SELECT
+        CONCAT(origin_code, '-', dest_code) AS route,
+        day_of_month,
+        ROUND(AVG(dep_delay_minutes), 2) AS avg_delay_today
+    FROM airline_dev.gold.fact_flights
+    WHERE cancelled = 0
+      AND dep_delay_minutes IS NOT NULL
+      AND day_of_month IS NOT NULL
+    GROUP BY origin_code, dest_code, day_of_month
+)
+SELECT
+    route,
+    day_of_month,
+    avg_delay_today,
+    LAG(avg_delay_today) OVER (PARTITION BY route ORDER BY day_of_month) AS avg_delay_yesterday,
+    ROUND(
+        avg_delay_today - LAG(avg_delay_today) OVER (PARTITION BY route ORDER BY day_of_month),
+        2
+    ) AS delay_change
+FROM daily_delays
+QUALIFY delay_change IS NOT NULL
+ORDER BY delay_change DESC
+LIMIT 15;
