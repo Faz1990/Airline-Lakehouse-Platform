@@ -300,3 +300,55 @@ FROM daily_delays
 QUALIFY delay_change IS NOT NULL
 ORDER BY delay_change DESC
 LIMIT 15;
+
+-- ============================================================
+-- Query 9: Routes performing worse than network average
+-- ============================================================
+-- Business question: Which routes have average delays worse than
+--   the overall network average? Show benchmark for context, 
+--   minutes worse, and flight count for credibility.
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - Empty OVER() for grand benchmark across groups
+--   - HAVING for group-level filter (>= 30 flights)
+--   - QUALIFY for window-result filter (worse than benchmark)
+--   - Average-of-averages vs weighted-average distinction
+-- Important nuance — avg-of-avg vs flight-weighted avg:
+--   AVG(route_avg_delay) OVER () treats each route equally,
+--   regardless of flight count. A 5-flight route counts as much
+--   as a 200-flight route in the benchmark. This answers:
+--     "Is this route worse than a typical route?"
+--   For "what delay would a random flight experience?", you'd 
+--   need AVG(dep_delay_minutes) over the raw fact table — that
+--   weights by flight volume.
+--   Different questions, different answers. Choose intentionally.
+-- Findings:
+--   - 3 routes worse than network average (14.23 min):
+--       OGG-DFW (+23.86), LAX-JFK (+2.07), ORD-LGA (+0.99)
+--   - OGG-DFW skewed by 1090-min outlier flight identified in Q8.
+--     Median would be more robust to outliers — production
+--     dashboards should report both.
+--   - LAX-JFK appears in 3 queries: highest volume (Q2), highest
+--     cancellation rate (Q4), worse-than-average delay (Q9).
+--     Cross-query pattern flags this as a problem route.
+-- ============================================================
+WITH route_stats AS (
+    SELECT
+        CONCAT(origin_code, '-', dest_code) AS route,
+        ROUND(AVG(dep_delay_minutes), 2) AS route_avg_delay,
+        COUNT(*) AS total_flights
+    FROM airline_dev.gold.fact_flights
+    WHERE cancelled = 0
+      AND dep_delay_minutes IS NOT NULL
+    GROUP BY origin_code, dest_code
+    HAVING COUNT(*) >= 30
+)
+SELECT
+    route,
+    route_avg_delay,
+    ROUND(AVG(route_avg_delay) OVER (), 2) AS network_avg_delay,
+    ROUND(route_avg_delay - AVG(route_avg_delay) OVER (), 2) AS minutes_worse_than_network,
+    total_flights
+FROM route_stats
+QUALIFY route_avg_delay > AVG(route_avg_delay) OVER ()
+ORDER BY minutes_worse_than_network DESC;
