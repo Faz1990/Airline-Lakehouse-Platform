@@ -352,3 +352,70 @@ SELECT
 FROM route_stats
 QUALIFY route_avg_delay > AVG(route_avg_delay) OVER ()
 ORDER BY minutes_worse_than_network DESC;
+
+-- ============================================================
+-- Query 10: Distance bucket cohort analysis
+-- ============================================================
+-- Business question: Group flights into haul-distance buckets
+--   (Short/Medium/Long/Ultra-Long). For each cohort, compute
+--   total flights, average delay, on-time rate, and cancel rate.
+--   Does flight distance correlate with operational performance?
+-- Tables: airline_dev.gold.fact_flights
+-- Concepts demonstrated:
+--   - CASE WHEN for continuous-to-categorical bucketing
+--   - Parallel CASE for bucket_order (sort) + label (display)
+--     -- avoids alphabetical ordering trap
+--   - Conditional aggregation: multiple metrics with DIFFERENT
+--     denominators in one pass
+--       avg_delay: filter to non-cancelled INSIDE the AVG
+--       on_time_rate: non-cancelled denominator
+--       cancel_rate: full denominator (incl. cancelled)
+--   - Mixing denominators is a classic interview trap. Each
+--     metric answers a different question:
+--       on-time = "of flights that flew, % on time?"
+--       cancel  = "of flights attempted, % scrapped?"
+-- BTS conventions: 
+--   On-time = departure delay < 15 minutes
+--   Distance brackets: <500, 500-1500, 1500-3000, 3000+
+-- Findings:
+--   - Long-haul: BEST on-time rate (85.16%) but WORST cancel
+--     rate (5.98%). "Fly well or don't fly" — long-haul flights
+--     are slot-protected when they go, cancelled when conditions
+--     deteriorate (cascading delay across 5+ hours is operationally
+--     catastrophic).
+--   - Medium-haul (500-1500) is worst overall: highest delay 
+--     (15 min), lowest on-time (78.81%). Hub-to-spoke flights
+--     most exposed to upstream cascading delays.
+--   - Ultra-long-haul: zero cancellations in 152 flights. Likely
+--     protected international routes; small sample warrants caveat.
+--   - Short-haul: reliable across all metrics. Quick turns, less
+--     weather/ATC stacking exposure.
+-- ============================================================
+WITH bucketed AS (
+    SELECT
+        CASE
+            WHEN distance_miles < 500 THEN 1
+            WHEN distance_miles < 1500 THEN 2
+            WHEN distance_miles < 3000 THEN 3
+            ELSE 4
+        END AS bucket_order,
+        CASE
+            WHEN distance_miles < 500 THEN 'Short-haul (<500 mi)'
+            WHEN distance_miles < 1500 THEN 'Medium-haul (500-1500 mi)'
+            WHEN distance_miles < 3000 THEN 'Long-haul (1500-3000 mi)'
+            ELSE 'Ultra-long-haul (3000+ mi)'
+        END AS distance_bucket,
+        cancelled,
+        dep_delay_minutes
+    FROM airline_dev.gold.fact_flights
+    WHERE distance_miles IS NOT NULL
+)
+SELECT
+    distance_bucket,
+    COUNT(*) AS total_flights,
+    ROUND(AVG(CASE WHEN cancelled = 0 THEN dep_delay_minutes END), 2) AS avg_delay_minutes,
+    ROUND(COUNT_IF(cancelled = 0 AND dep_delay_minutes < 15) * 100.0 / COUNT_IF(cancelled = 0), 2) AS on_time_rate_pct,
+    ROUND(COUNT_IF(cancelled = 1) * 100.0 / COUNT(*), 2) AS cancellation_rate_pct
+FROM bucketed
+GROUP BY bucket_order, distance_bucket
+ORDER BY bucket_order;
