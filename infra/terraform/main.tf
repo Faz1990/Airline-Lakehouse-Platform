@@ -47,7 +47,7 @@ resource "azurerm_eventhub_namespace" "main" {
 
   # Kafka surface enables Kafka protocol clients (used by DLT)
   # No additional cost on Standard tier
-  zone_redundant = true
+  
 
   tags = local.common_tags
 }
