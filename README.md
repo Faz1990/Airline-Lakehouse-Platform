@@ -52,13 +52,13 @@ flowchart LR
 
 > I accidentally double-sent a 614-row CSV file mid-development. Bronze (append-only) accumulated **1,858 rows**. Silver MERGE reduced it to **1,244 — exactly the expected count**. That accident became the strongest piece of evidence in the whole project: the dedup logic survives operator error.
 
-**Screenshot:** [`phase4_silver_dedup_proof.png`](docs/evidence/phase4_silver_dedup_proof.png)
+**Screenshot:** [`phase4_silver_dedup_proof.png`](docs/Evidence/phase4_silver_dedup_proof.png)
 
 ### 2. Quarantine routing works because I broke it on purpose
 
 > "Show me the quarantine table" with zero rows in it proves nothing. So I wrote `send_bad_events.py` — 4 deliberately malformed records with traceable IDs (`BAD_001` through `BAD_004`). All four routed to `events_quarantine` with reason codes; the valid path stayed clean at 1,858 rows. The DLT expectations metrics matched the row counts exactly.
 
-**Screenshot:** [`phase3_quarantine_proof.png`](docs/evidence/phase3_quarantine_proof.png)
+**Screenshot:** [`phase3_quarantine_proof_01.png`](docs/Evidence/phase3_quarantine_proof_01.png)
 
 ### 3. I induced a real failure and wrote it up
 
@@ -108,7 +108,7 @@ Honest scope boundaries. A senior engineer asks "what's missing"; I'd rather sta
 /jobs/                   Backfill notebook stub (replay pattern, not production-ready)
 /sql/                    10 interview-grade queries on the Gold marts
 /docs/                   Design notes, runbooks, contracts, evidence
-└── evidence/            Screenshots from each phase
+└── Evidence/            Screenshots from each phase
 ```
 
 ### Documentation
