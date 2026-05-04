@@ -23,21 +23,14 @@ A production-aligned portfolio project. Real Azure infrastructure (now decommiss
 ```mermaid
 flowchart LR
     P["Producer<br/>Python + AAD"] --> EH["Event Hubs<br/>Kafka SASL"]
-
-    subgraph Bronze["Bronze DLT pipeline"]
-        Raw["events_raw<br/>(append-all)"]
-        Br["events_bronze_valid"]
-        Q["events_quarantine"]
-        Raw -->|passed expectations| Br
-        Raw -->|failed expectations| Q
-    end
-
-    EH --> Raw
+    EH --> Raw["events_raw<br/>(append-all)"]
+    Raw -->|passed expectations| Br["events_bronze_valid"]
+    Raw -->|failed expectations| Q["events_quarantine"]
     Br --> S["Silver DLT<br/>MERGE dedup"]
     S --> G["Gold DLT<br/>marts"]
 
-    KV["Key Vault"] -.secret scope.-> Bronze
-    W["Workflow"] -.orchestrates.-> Bronze
+    KV["Key Vault"] -.secret scope.-> Raw
+    W["Workflow"] -.orchestrates.-> Raw
     W -.orchestrates.-> S
     W -.orchestrates.-> G
 ```
