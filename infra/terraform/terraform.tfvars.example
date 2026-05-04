@@ -1,0 +1,9 @@
+# ============================================================
+# terraform.tfvars.example
+# Copy this file to terraform.tfvars and fill in your values.
+# DO NOT put real secrets in this file. tfvars is gitignored.
+# ============================================================
+
+subscription_id = "<your-azure-subscription-id>"
+environment     = "dev"
+location        = "uksouth"
