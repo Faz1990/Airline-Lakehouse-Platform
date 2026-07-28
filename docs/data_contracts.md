@@ -18,7 +18,6 @@ Non-guarantees:
 Operational purpose:
 Bronze exists to preserve replayability, auditability, and the earliest visible form of upstream change.
 
-## Silver Contract
 
 ## Silver Contract
 
